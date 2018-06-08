@@ -3,6 +3,7 @@
 class NeuralNetwork {
 
   constructor(inputs, hidden, outputs) {
+    this.isTraining = false;
     this.model = tf.sequential();
     const hiddenLayer = tf.layers.dense({
       units: hidden,
@@ -11,32 +12,34 @@ class NeuralNetwork {
     });
     const outputLayer = tf.layers.dense({
       units: outputs,
-      inputShape: [hidden],
       activation: 'sigmoid'
     });
     this.model.add(hiddenLayer);
     this.model.add(outputLayer);
     this.model.compile({
-      optimizer: 'sgd',
+      optimizer: tf.train.sgd(0.1), // The default learning rate is too slow
       loss: 'meanSquaredError'
     });
   }
 
   predict(inputs) {
-    return tf.tidy(() => {
-      const xs = tf.tensor2d([inputs]);
-      return this.model.predict(xs).get();
+    return tf.tidy(()=>{
+      const xs = Array.isArray(inputs)?Array.isArray(inputs[0])? tf.tensor(inputs):tf.tensor([inputs]):inputs;
+      return this.model.predict(xs).dataSync();
     });
   }
 
-  async train(data, callback) {
-    // return tf.tidy(() => {
-    const xs = tf.tensor2d(data.inputs);
-    const ys = tf.tensor2d(data.targets);
-    await this.model.fit(xs, ys, {
-      epochs: 10
+  async train(data) {
+    const isTensor = x=>x instanceof tf.Tensor;
+    const xs = isTensor(data.inputs) ? data.inputs: tf.tensor2d(data.inputs);
+    const ys = isTensor(data.targets) ? data.targets: tf.tensor2d(data.targets);
+    const history = await this.model.fit(xs, ys, {
+      epochs: 10,
+      shuffle: true,
+      validationData: [xs, ys]
     });
-    callback();
-    // });
+    if (!isTensor(data.inputs)) xs.dispose();
+    if (!isTensor(data.targets)) ys.dispose();
+    return history;
   }
 }
